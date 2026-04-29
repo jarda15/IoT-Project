@@ -1,21 +1,22 @@
 import network
 import machine
 import time
-from umqtt.simple import MQTTClient
-from umqtt.simple import MQTTException
+from simple import MQTTClient
+from simple import MQTTException
 import ujson
 import ahtx0
 
 # ============ CONFIGURATION ============
-WIFI_SSID = "SSID"
-WIFI_PWD = "PASSWORD"
+WIFI_SSID = "LPWAN-IoT-06"
+WIFI_PWD = "LPWAN-IoT-06-WiFi"
 
 BROKER_IP = "147.229.148.105"
 BROKER_PORT = 11883
 GROUP_NUM = "9"
 
 TOPIC_DATA = f"IoTProject/{GROUP_NUM}/grill/teplota"
-TOPIC_TARGET = f"IoTProject/{GROUP_NUM}/grill/target"
+TOPIC_TARGET_GRILL = f"IoTProject/{GROUP_NUM}/grill/Tgrill"
+TOPIC_TARGET_MASO = f"IoTProject/{GROUP_NUM}/grill/Tmaso"
 CLIENT_ID = f"grill_sensor_{GROUP_NUM}"
 
 INTERVAL_FAR = 30
@@ -24,13 +25,21 @@ INTERVAL_CLOSE = 5
 
 # ============ HARDWARE INIT ============
 i2c1 = machine.I2C(1, scl=machine.Pin(3), sda=machine.Pin(2), freq=400000)
-tmp_sensor = ahtx0.AHT20(i2c1)
-tmp_sensor.initialize()
+tmp_sensor1 = ahtx0.AHT20(i2c1)
+tmp_sensor1.initialize()
+
+
+i2c0 = machine.I2C(0, scl=machine.Pin(5), sda=machine.Pin(4), freq=400000)
+tmp_sensor2 = ahtx0.AHT20(i2c0)
+tmp_sensor2.initialize()
+
 
 led = machine.Pin("LED", machine.Pin.OUT)
 
 # ============ STATE ============
-target_temp = 75.0
+target_temp_maso = 75.0
+target_temp_grill = 200.0
+
 publish_interval = INTERVAL_FAR
 
 
@@ -63,12 +72,13 @@ def connect_wifi():
 
 
 def on_message(topic, msg):
-    global target_temp
+    global target_temp_maso, target_temp_grill
     try:
         js = ujson.loads(msg)
-        if "target" in js:
-            target_temp = float(js["target"])
-            print(f"  [RX] New target: {target_temp}C")
+        if "masoTarget" in js:
+            target_temp_maso = float(js["masoTarget"])
+        if "grillTarget" in js:
+            target_temp_grill = float(js["grillTarget"])
     except Exception as e:
         print(f"  Parse error: {e}")
 
@@ -84,8 +94,11 @@ def connect_mqtt():
     client.connect()
     print(f"MQTT connected as '{CLIENT_ID}'")
 
-    client.subscribe(TOPIC_TARGET)
-    print(f"Subscribed to: {TOPIC_TARGET}")
+    client.subscribe(TOPIC_TARGET_GRILL)
+    print(f"Subscribed to: {TOPIC_TARGET_GRILL}")
+
+    client.subscribe(TOPIC_TARGET_MASO)
+    print(f"Subscribed to: {TOPIC_TARGET_MASO}")
     return client
 
 
@@ -99,36 +112,42 @@ client = connect_mqtt()
 
 led.on()
 msg_counter = 0
-keepalive_counter = 0
+keepalive_counter = 9999
 
 print(f"\nPublishing to: {TOPIC_DATA}")
-print(f"Default target: {target_temp}C")
+print(f"Default target: {target_temp_maso} C,{target_temp_grill} C")
 print(f"Intervals: far={INTERVAL_FAR}s, medium={INTERVAL_MEDIUM}s, close={INTERVAL_CLOSE}s")
 print("-" * 40)
 
 while True:
     try:
         client.check_msg()
-
         keepalive_counter += 1
 
-        if keepalive_counter >= publish_interval * 2:
+        if keepalive_counter >= (publish_interval * 2):
             keepalive_counter = 0
             msg_counter += 1
 
-            meat_temp = tmp_sensor.temperature
-            grill_temp = meat_temp + 80.0
+            meat_temp = tmp_sensor1.temperature
+            grill_temp = tmp_sensor2.temperature
 
-            publish_interval = get_interval(meat_temp, target_temp)
+            int_m = get_interval(meat_temp, target_temp_maso)
+            int_g = get_interval(grill_temp, target_temp_grill)
+            publish_interval = min(int_m, int_g)
 
             payload = ujson.dumps({
                 "maso": round(meat_temp, 1),
                 "gril": round(grill_temp, 1)
             })
             client.publish(TOPIC_DATA, payload)
+            
+            status_m = "ALARM!" if meat_temp >= target_temp_maso else "ok"
+            status_g = "ALARM!" if grill_temp >= target_temp_grill else "ok"
 
-            status = "ALARM!" if meat_temp >= target_temp else "OK"
-            print(f"[{msg_counter}] Maso:{meat_temp:.1f}C Gril:{grill_temp:.1f}C Target:{target_temp:.1f}C Interval:{publish_interval}s [{status}]")
+            print(f"[{msg_counter}] "
+                  f"MEAT: {meat_temp:.1f}/{target_temp_maso:.0f} C ({status_m}) | "
+                  f"GRILL: {grill_temp:.1f}/{target_temp_grill:.0f} C ({status_g}) | "
+                  f"Next in: {publish_interval}s")
 
         time.sleep(0.5)
 
@@ -142,3 +161,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(5)
+
