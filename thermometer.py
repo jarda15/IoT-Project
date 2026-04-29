@@ -12,7 +12,7 @@ WIFI_PWD = "PASSWORD"
 
 BROKER_IP = "147.229.148.105"
 BROKER_PORT = 11883
-GROUP_NUM = "X"
+GROUP_NUM = "9"
 
 TOPIC_DATA = f"IoTProject/{GROUP_NUM}/grill/teplota"
 TOPIC_TARGET = f"IoTProject/{GROUP_NUM}/grill/target"
