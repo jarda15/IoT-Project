@@ -21,7 +21,7 @@ class GrilApp:
     def __init__(self, root):
         self.root = root
         self.root.title("MasterChef Dashboard PRO")
-        self.root.geometry("450x650") # Trošku som zväčšil okno pre tlačidlo
+        self.root.geometry("450x650")
         self.root.configure(bg='#121212') 
         
         self.target_maso = tk.DoubleVar(value=75.0)
@@ -47,7 +47,6 @@ class GrilApp:
         self.slider_gril.pack(fill="x", padx=60)
 
         # --- CONFIRMATION BUTTON ---
-        # Tlačidlo, ktoré odošle dáta
         self.btn_send = tk.Button(root, text="ODOSLAŤ NASTAVENIA", font=("Arial", 12, "bold"), 
                                   bg="#00ff00", fg="black", activebackground="#00cc00",
                                   command=self.publish_all_settings, cursor="hand2")
@@ -64,17 +63,14 @@ class GrilApp:
             print("Chyba: MQTT nie je pripojené!")
             return
 
-        # Získame hodnoty
         val_m = float(self.target_maso.get())
         val_g = float(self.target_gril.get())
 
-        # Publikujeme na oba topiky
         self.client.publish("IoTProject/9/grill/Tmaso", json.dumps({"masoTarget": val_m}))
         self.client.publish("IoTProject/9/grill/Tgrill", json.dumps({"grillTarget": val_g}))
 
         print(f"Odoslané: Mäso {val_m}°, Gril {val_g}°")
         
-        # Malý vizuálny efekt na tlačidle (na moment zmení text)
         original_text = self.btn_send.cget("text")
         self.btn_send.config(text="ODOSLANÉ!", bg="white")
         self.root.after(1000, lambda: self.btn_send.config(text=original_text, bg="#00ff00"))
